@@ -39,6 +39,35 @@
 - Desktop notifications - get notified when a command is finished in the background
 - Customizable UI
 
+## Install this split-panes build (Ubuntu 26.04)
+
+These steps are for this personal copy, which adds split panes to the official
+code. If a Black Box Flatpak is installed, remove it first, as it clashes with
+this build.
+
+Run all of these from a terminal:
+
+```sh
+# 1. Install what's needed to build it
+sudo apt install git meson ninja-build valac gettext desktop-file-utils appstream \
+  libgtk-4-dev libadwaita-1-dev libvte-2.91-gtk4-dev libjson-glib-dev \
+  libpcre2-dev libxml2-dev librsvg2-dev libgee-0.8-dev libgraphene-1.0-dev
+
+# 2. Get the code (skip if you already have this copy)
+git clone -b split https://github.com/brianmcg/blackbox-terminal.git
+
+# 3. Build and install it, from inside the code folder
+cd blackbox-terminal
+meson setup builddir --buildtype=release
+ninja -C builddir
+sudo ninja -C builddir install
+```
+
+Then open Black Box from the app launcher, or run `blackbox-terminal`. Your
+font and theme are set in Preferences.
+
+To remove it, run `sudo ninja -C builddir uninstall` from the code folder.
+
 ## Install
 
 Black Box is packaged by the community for several distributions. See
