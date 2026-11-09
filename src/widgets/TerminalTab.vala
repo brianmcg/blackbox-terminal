@@ -16,36 +16,44 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-[GtkTemplate(ui = "/com/raggesilver/BlackBox/gtk/terminal-tab.ui")]
-public class Terminal.TerminalTab : Gtk.Box {
+/**
+ * The content of a tab: a tree of split panes. The child of this widget is
+ * either a single {@link TerminalPane} or a {@link Gtk.Paned} whose two
+ * children are, recursively, panes or further Gtk.Paned.
+ */
+public class Terminal.TerminalTab : Adw.Bin {
   // This signal is emitted when the TerminalTab is asking to be closed.
   public signal void close_request();
 
-  [GtkChild] unowned Adw.Banner banner;
-  [GtkChild] unowned Gtk.ScrolledWindow scrolled;
-  [GtkChild] unowned SearchToolbar search_toolbar;
+  public TerminalPane focused_pane   { get; private set; }
+  public string? title_override { get; private set; default = null; }
 
-  private string default_title;
-  private Gtk.PopoverMenu popover;
-
-  public Terminal terminal       { get; protected set; }
-  public string?  title_override { get; private set; default = null; }
+  // The focused pane's terminal
+  public Terminal terminal {
+    get { return this.focused_pane.terminal; }
+  }
 
   public string title {
-    get {
-      if (this.title_override != null) { return this.title_override; }
-      if (this.terminal.window_title != null &&
-          this.terminal.window_title.strip() != "") {
-        return this.terminal.window_title;
-      }
+    get { return this.title_override ?? this.focused_pane.title; }
+  }
 
-      return this.default_title;
+  public bool is_split {
+    get { return !(this.child is TerminalPane); }
+  }
+
+  // Whether any pane's terminal wants the user's attention
+  public bool needs_attention {
+    get {
+      foreach (var pane in this.get_panes()) {
+        if (pane.terminal.needs_attention) { return true; }
+      }
+      return false;
     }
   }
 
-  static construct {
-    typeof (SearchToolbar).class_ref();
-  }
+  private weak Window window;
+  private string default_title;
+  private ulong  focused_pane_title_handler = 0;
 
   public TerminalTab (
     Window window,
@@ -53,168 +61,212 @@ public class Terminal.TerminalTab : Gtk.Box {
     string? command,
     string? cwd
   ) {
-    Object(
-      orientation: Gtk.Orientation.VERTICAL,
-      spacing: 0
-    );
-
+    this.window = window;
     this.default_title = command ?? "%s %u".printf(_("tab"), tab_id);
 
-    this.terminal = new Terminal(window, command, cwd);
-    // TODO: Can't we use a property for this? Has default or something?
-    this.terminal.grab_focus();
-    this.popover = build_popover();
-
-    var click = new Gtk.GestureClick() {
-      button = Gdk.BUTTON_SECONDARY,
-    };
-
-    click.pressed.connect(this.show_menu);
-
-    this.terminal.add_controller(click);
-
-    this.connect_signals();
-  }
-
-#if BLACKBOX_DEBUG_MEMORY
-  ~TerminalTab () {
-    message("TerminalTab destroyed");
-  }
-
-  public override void dispose() {
-    message("TerminalTab dispose");
-    base.dispose();
-  }
-
-#endif
-
-  private void connect_signals() {
-    var settings = Settings.get_default();
-
-    //  this.terminal.bind_property ("window-title",
-    //                               this,
-    //                               "title",
-    //                               GLib.BindingFlags.DEFAULT,
-    //                               null, null);
-
-    this.terminal.notify["window-title"].connect(() => {
-      this.notify_property("title");
-    });
+    var pane = this.create_pane(command, cwd);
+    this.child = pane;
+    this.on_pane_focused(pane);
 
     this.notify["title-override"].connect(() => {
       this.notify_property("title");
     });
 
-    this.terminal.exit.connect(() => {
-      this.close_request();
-    });
-
-    this.terminal.spawn_failed.connect((message) => {
+    pane.terminal.spawn_failed.connect(() => {
       this.override_title(_("Error"));
-      this.banner.title = message;
-      this.banner.revealed = true;
     });
-
-    settings.notify["show-scrollbars"]
-    .connect(this.on_show_scrollbars_updated);
-
-    settings.notify_property("show-scrollbars");
-
-    settings.schema.bind(
-      "use-overlay-scrolling",
-      this.scrolled,
-      "overlay-scrolling",
-      SettingsBindFlags.GET
-    );
-
-    settings.bind_property(
-      "use-sixel",
-      this.terminal,
-      "enable-sixel",
-      BindingFlags.SYNC_CREATE
-    );
-
-    // refocus terminal after closing context menu, otherwise the focus will go on the header buttons
-    this.popover.closed.connect_after(pop_close);
   }
 
-  private void on_show_scrollbars_updated() {
-    var settings = Settings.get_default();
-    var show_scrollbars = settings.show_scrollbars;
-    var is_scrollbar_being_used = this.terminal.parent == this.scrolled;
+  private TerminalPane create_pane(string? command, string? cwd) {
+    // Tabs can be moved between windows; prefer the one we are in now.
+    var win = (this.get_root() as Window) ?? this.window;
+    var pane = new TerminalPane(win, this.default_title, command, cwd);
 
-    this.scrolled.visible = show_scrollbars;
+    pane.focused.connect(this.on_pane_focused);
+    pane.close_request.connect(this.close_pane);
+    pane.terminal.notify["needs-attention"]
+    .connect(this.on_pane_needs_attention_changed);
 
-    if (show_scrollbars != is_scrollbar_being_used) {
-      if (this == this.terminal.parent) {
-        this.remove(this.terminal);
-      } else if (this.scrolled == this.terminal.parent) {
-        this.scrolled.child = null;
-      }
+    return pane;
+  }
+
+  private void on_pane_needs_attention_changed() {
+    this.notify_property("needs-attention");
+  }
+
+  private void on_focused_pane_title_changed() {
+    this.notify_property("title");
+  }
+
+  private void on_pane_focused(TerminalPane pane) {
+    if (pane == this.focused_pane) { return; }
+
+    if (this.focused_pane_title_handler != 0) {
+      this.focused_pane.disconnect(this.focused_pane_title_handler);
     }
 
-    if (
-      show_scrollbars != is_scrollbar_being_used ||
-      this.terminal.parent == null
-    ) {
-      if (show_scrollbars) {
-        this.scrolled.child = this.terminal;
-      } else {
-        this.insert_child_after(this.terminal, null);
-      }
-    }
+    this.freeze_notify();
+    this.focused_pane = pane;
+    this.focused_pane_title_handler = pane.notify["title"]
+      .connect(this.on_focused_pane_title_changed);
+    this.notify_property("terminal");
+    this.notify_property("title");
+    this.thaw_notify();
   }
 
-  public Gtk.PopoverMenu build_popover() {
-    var builder =
-      new Gtk.Builder.from_resource(
-        "/com/raggesilver/BlackBox/gtk/terminal-menu.ui");
-    var pop = builder.get_object("popover") as Gtk.PopoverMenu;
+  /**
+   * Split the focused pane in two and focus the new pane.
+   * HORIZONTAL puts the new pane to the right, VERTICAL puts it below.
+   */
+  public void split(Gtk.Orientation orientation) {
+    var target = this.focused_pane;
+    var cwd = Terminal
+      .get_current_working_directory_for_new_session(target.terminal);
+    var new_pane = this.create_pane(null, cwd);
 
-    pop.set_parent(this);
-    pop.set_has_arrow(false);
-    pop.set_halign(Gtk.Align.START);
-
-    return pop;
-  }
-
-  public void pop_close() {
-    this.terminal.grab_focus();
-  }
-
-  public void show_menu(int n_pressed, double x, double y) {
-    if (this.terminal.hyperlink_hover_uri != null) {
-      this.terminal.window.link = this.terminal.hyperlink_hover_uri;
-    } else {
-      this.terminal.window.link = this.terminal.check_match_at(x, y, null);
-    }
-
-    double x_in_view, y_in_view;
-    this.terminal.translate_coordinates(this, x, y, out x_in_view,
-                                        out y_in_view);
-
-    var r = Gdk.Rectangle() {
-      x = (int) x_in_view,
-      y = (int) y_in_view
+    var paned = new Gtk.Paned(orientation) {
+      resize_start_child = true,
+      resize_end_child = true,
+      shrink_start_child = false,
+      shrink_end_child = false,
     };
 
-    this.popover.set_pointing_to(r);
-    this.popover.popup();
+    // Divide the space the target pane currently occupies evenly
+    var size = orientation == Gtk.Orientation.HORIZONTAL
+      ? target.get_width()
+      : target.get_height();
+    if (size > 0) {
+      paned.position = size / 2;
+    }
+
+    // Put the splitter where the target pane was, then the panes inside it
+    this.replace_widget(target, paned);
+    paned.start_child = target;
+    paned.end_child = new_pane;
+
+    this.notify_property("is-split");
+    new_pane.terminal.grab_focus();
+  }
+
+  /**
+   * Focus the next (or previous) pane in layout order, wrapping around.
+   */
+  public void focus_pane(bool forward) {
+    var panes = this.get_panes();
+    if (panes.size < 2) { return; }
+
+    var i = panes.index_of(this.focused_pane);
+    var next = forward
+      ? (i + 1) % panes.size
+      : (i - 1 + panes.size) % panes.size;
+
+    panes[next].terminal.grab_focus();
+  }
+
+  /**
+   * Remove a pane (no confirmation). The other side of its divider takes its
+   * place. Closing the last pane asks for the whole tab to be closed.
+   */
+  public void close_pane(TerminalPane pane) {
+    var paned = pane.parent as Gtk.Paned;
+
+    if (paned == null) {
+      this.close_request();
+      return;
+    }
+
+    pane.on_before_close();
+
+    Gtk.Widget sibling = (paned.start_child == pane)
+      ? paned.end_child
+      : paned.start_child;
+
+    paned.start_child = null;
+    paned.end_child = null;
+    this.replace_widget(paned, sibling);
+    this.notify_property("is-split");
+
+    if (pane == this.focused_pane) {
+      var next = first_pane_in(sibling);
+      this.on_pane_focused(next);
+      next.terminal.grab_focus();
+    }
+
+    this.notify_property("needs-attention");
+  }
+
+  // Put `replacement` where `old` currently is in the split tree
+  private void replace_widget(Gtk.Widget old, Gtk.Widget replacement) {
+    var parent = old.parent;
+
+    if (parent == this) {
+      this.child = replacement;
+    } else {
+      var paned = (Gtk.Paned) parent;
+      if (paned.start_child == old) {
+        paned.start_child = replacement;
+      } else {
+        paned.end_child = replacement;
+      }
+    }
+  }
+
+  // The first pane in layout order inside `widget`
+  private static TerminalPane first_pane_in(Gtk.Widget widget) {
+    var w = widget;
+    while (w is Gtk.Paned) {
+      w = ((Gtk.Paned) w).start_child;
+    }
+    return (TerminalPane) w;
+  }
+
+  /**
+   * All panes in layout order (top/left before bottom/right).
+   */
+  public Gee.List<TerminalPane> get_panes() {
+    var list = new Gee.ArrayList<TerminalPane> ();
+    collect_panes(this.child, list);
+    return list;
+  }
+
+  private static void collect_panes(
+    Gtk.Widget? widget,
+    Gee.List<TerminalPane> list
+  ) {
+    if (widget is TerminalPane) {
+      list.add((TerminalPane) widget);
+    } else if (widget is Gtk.Paned) {
+      var paned = (Gtk.Paned) widget;
+      collect_panes(paned.start_child, list);
+      collect_panes(paned.end_child, list);
+    }
   }
 
   public void search() {
-    this.search_toolbar.open();
+    this.focused_pane.search();
   }
 
   public void override_title(string? _title) {
     this.title_override = _title;
   }
 
-  public uint get_id() {
-    return terminal.id;
+  /**
+   * Make the pane holding the terminal with this id the focused pane.
+   * Returns false if no pane in this tab holds that terminal.
+   */
+  public bool focus_terminal(uint terminal_id) {
+    foreach (var pane in this.get_panes()) {
+      if (pane.terminal.id == terminal_id) {
+        this.on_pane_focused(pane);
+        return true;
+      }
+    }
+    return false;
   }
 
   public void on_before_close() {
-    terminal.on_before_close();
+    foreach (var pane in this.get_panes()) {
+      pane.on_before_close();
+    }
   }
 }

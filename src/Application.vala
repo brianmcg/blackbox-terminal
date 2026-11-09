@@ -160,11 +160,13 @@ public class Terminal.Application : Adw.Application {
     return null;
   }
 
-  private void on_focus_tab(uint window_id, uint tab_id) {
+  private void on_focus_tab(uint window_id, uint terminal_id) {
+    // Terminal ids are unique across windows. Search every window, since the
+    // terminal's tab may have moved to another window after the notification
+    // was sent.
     foreach (var _window in this.get_windows()) {
       var window = _window as Window;
-      if (window != null && window.id == window_id) {
-        window.focus_tab_with_id(tab_id);
+      if (window != null && window.focus_tab_with_id(terminal_id)) {
         return;
       }
     }

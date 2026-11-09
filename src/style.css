@@ -16,6 +16,11 @@
   background: @window_bg_color;
 }
 
+/* Divider between split panes */
+#blackbox-main-window paned > separator {
+  background-color: @fixed-borders;
+}
+
 window:not(.about) headerbar,
 .custom-headerbar {
   background-color: @window_bg_color;

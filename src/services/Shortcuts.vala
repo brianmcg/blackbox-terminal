@@ -40,6 +40,12 @@ namespace Terminal {
   public const string ACTION_WIN_RENAME_TAB = "win.rename-tab";
   public const string ACTION_WIN_MOVE_TAB_LEFT = "win.move-tab-left";
   public const string ACTION_WIN_MOVE_TAB_RIGHT = "win.move-tab-right";
+  public const string ACTION_WIN_SPLIT_RIGHT = "win.split-right";
+  public const string ACTION_WIN_SPLIT_DOWN = "win.split-down";
+  public const string ACTION_WIN_CLOSE_PANE = "win.close-pane";
+  public const string ACTION_WIN_FOCUS_NEXT_PANE = "win.focus-next-pane";
+  public const string ACTION_WIN_FOCUS_PREVIOUS_PANE =
+    "win.focus-previous-pane";
 
   public const string ACTION_WIN_SWITCH_TAB_1 = "win.switch-tab-1";
   public const string ACTION_WIN_SWITCH_TAB_2 = "win.switch-tab-2";
@@ -78,11 +84,10 @@ public class Terminal.Keymap : Object, Json.Serializable {
   private Gee.MultiMap<string, string?> default_keymap;
 
   construct {
-    var _keymap = new Gee.HashMultiMap<string, string> ();
+    var _keymap = new Gee.HashMultiMap<string, string?> ();
 
-    _keymap.set(ACTION_FOCUS_NEXT_TAB, "<Control>Tab");
+    // Ctrl+Tab and Ctrl+Shift+Tab cycle panes instead (see below)
     _keymap.set(ACTION_FOCUS_NEXT_TAB, "<Control>Page_Down");
-    _keymap.set(ACTION_FOCUS_PREVIOUS_TAB, "<Shift><Control>Tab");
     _keymap.set(ACTION_FOCUS_PREVIOUS_TAB, "<Control>Page_Up");
     _keymap.set(ACTION_NEW_WINDOW, "<Shift><Control>n");
     _keymap.set(ACTION_WIN_SWITCH_HEADER_BAR_MODE, "<Shift><Control>h");
@@ -96,11 +101,17 @@ public class Terminal.Keymap : Object, Json.Serializable {
     _keymap.set(ACTION_WIN_ZOOM_IN, "<Shift><Control>plus");
     _keymap.set(ACTION_WIN_ZOOM_OUT, "<Control>minus");
     _keymap.set(ACTION_WIN_ZOOM_DEFAULT, "<Shift><Control>parenright");
-    _keymap.set(ACTION_WIN_CLOSE_TAB, "<Shift><Control>w");
+    // No default shortcut; Ctrl+Shift+W closes the focused pane instead
+    _keymap.set(ACTION_WIN_CLOSE_TAB, null);
     _keymap.set(ACTION_WIN_RENAME_TAB, "<Shift><Control>r");
     _keymap.set(ACTION_WIN_MOVE_TAB_LEFT, "<Shift><Control>Page_Up");
     _keymap.set(ACTION_WIN_MOVE_TAB_RIGHT, "<Shift><Control>Page_Down");
     _keymap.set(ACTION_WIN_CLEAR_SCROLLBACK, "<Control>k");
+    _keymap.set(ACTION_WIN_SPLIT_RIGHT, "<Shift><Control>e");
+    _keymap.set(ACTION_WIN_SPLIT_DOWN, "<Shift><Control>o");
+    _keymap.set(ACTION_WIN_CLOSE_PANE, "<Shift><Control>w");
+    _keymap.set(ACTION_WIN_FOCUS_NEXT_PANE, "<Control>Tab");
+    _keymap.set(ACTION_WIN_FOCUS_PREVIOUS_PANE, "<Shift><Control>Tab");
 
     _keymap.set(ACTION_WIN_SWITCH_TAB_1, "<Alt>1");
     _keymap.set(ACTION_WIN_SWITCH_TAB_2, "<Alt>2");

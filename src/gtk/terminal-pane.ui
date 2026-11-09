@@ -2,7 +2,7 @@
 <interface>
   <requires lib="gtk" version="4.0" />
   <requires lib="libadwaita" version="1.0" />
-  <template class="TerminalTerminalTab" parent="GtkBox">
+  <template class="TerminalTerminalPane" parent="GtkBox">
     <property name="orientation">vertical</property>
     <property name="spacing">0</property>
 
@@ -15,7 +15,7 @@
     <child>
       <object class="GtkScrolledWindow" id="scrolled">
         <!-- <property name="child">
-          <lookup name="terminal">TerminalTerminalTab</lookup>
+          <lookup name="terminal">TerminalTerminalPane</lookup>
         </property> -->
       </object>
     </child>
@@ -23,10 +23,10 @@
     <child>
       <object class="TerminalSearchToolbar" id="search_toolbar">
         <!-- <binding name="terminal">
-          <lookup name="terminal">TerminalTerminalTab</lookup>
+          <lookup name="terminal">TerminalTerminalPane</lookup>
         </binding> -->
 
-        <property name="terminal" bind-source="TerminalTerminalTab" bind-property="terminal" bind-flags="sync-create" />
+        <property name="terminal" bind-source="TerminalTerminalPane" bind-property="terminal" bind-flags="sync-create" />
       </object>
     </child>
   </template>

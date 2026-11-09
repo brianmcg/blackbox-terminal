@@ -34,6 +34,21 @@
       </item>
     </section>
 
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">Split Right</attribute>
+        <attribute name="action">win.split-right</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Split Down</attribute>
+        <attribute name="action">win.split-down</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Close Pane</attribute>
+        <attribute name="action">win.close-pane</attribute>
+      </item>
+    </section>
+
     <!-- <section>
       <attribute name="display-hint">inline-buttons</attribute>
       <attribute name="label" translatable="yes">Zoom</attribute>

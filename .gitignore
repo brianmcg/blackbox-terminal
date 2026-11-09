@@ -22,3 +22,7 @@ repo/
 
 # i18n
 po/*.pot
+
+# Local planning notes
+tasks/
+SPEC-split-panes.md

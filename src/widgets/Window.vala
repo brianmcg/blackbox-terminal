@@ -127,6 +127,8 @@ public class Terminal.Window : Adw.ApplicationWindow {
   SimpleAction close_specific_tab_action;
   SimpleAction detatch_tab_action;
   SimpleAction rename_tab_action;
+  SimpleAction focus_next_pane_action;
+  SimpleAction focus_previous_pane_action;
 
   // TODO: bring all SimpleActions over here
   private const ActionEntry[] ACTION_ENTRIES = {
@@ -472,15 +474,21 @@ public class Terminal.Window : Adw.ApplicationWindow {
   }
 
   private async void try_closing_tab(Adw.TabPage page) {
-    var     tab = page.child as TerminalTab;
-    var     terminal = tab?.terminal;
-    bool    can_close = true;
-    string? command = null;
+    var  tab = page.child as TerminalTab;
+    bool can_close = true;
+    string?[] commands = {};
 
-    if (terminal != null) {
-      if (!(yield terminal.get_can_close(out command))) {
-        can_close = yield confirm_closing({ command });
+    if (tab != null) {
+      foreach (var pane in tab.get_panes()) {
+        string? command = null;
+        if (!(yield pane.terminal.get_can_close(out command))) {
+          commands += command;
+        }
       }
+    }
+
+    if (commands.length > 0) {
+      can_close = yield confirm_closing(commands);
     }
 
     if (can_close) {
@@ -488,8 +496,34 @@ public class Terminal.Window : Adw.ApplicationWindow {
     }
 
     this.tab_view.close_page_finish(page, can_close);
-    if (can_close && terminal == this.active_terminal) {
+    if (can_close && tab != null && tab.terminal == this.active_terminal) {
       this.active_terminal = null;
+    }
+  }
+
+  // Close the focused pane of the active tab, asking first if a command is
+  // running in it. A tab with a single pane is closed as a whole.
+  private async void try_closing_active_pane() {
+    var tab = this.active_terminal_tab;
+    if (tab == null) { return; }
+
+    if (tab.get_panes().size < 2) {
+      this.close_active_tab();
+      return;
+    }
+
+    var     pane = tab.focused_pane;
+    string? command = null;
+
+    if (!(yield pane.terminal.get_can_close(out command))) {
+      if (!(yield confirm_closing({ command }, ConfirmClosingContext.PANE))) {
+        return;
+      }
+    }
+
+    // The pane may have exited on its own while the dialog was open
+    if (pane.get_ancestor(typeof (TerminalTab)) == tab) {
+      tab.close_pane(pane);
     }
   }
 
@@ -501,10 +535,13 @@ public class Terminal.Window : Adw.ApplicationWindow {
     for (uint i = 0; i < n_pages; i++) {
       string? command = null;
       var     page = this.tab_view.get_nth_page((int) i);
-      var     terminal = (page.get_child() as TerminalTab)?.terminal;
+      var     tab = page.get_child() as TerminalTab;
+      if (tab == null) { continue; }
 
-      if (terminal != null && !(yield terminal.get_can_close(out command))) {
-        commands += command;
+      foreach (var pane in tab.get_panes()) {
+        if (!(yield pane.terminal.get_can_close(out command))) {
+          commands += command;
+        }
       }
     }
 
@@ -622,6 +659,41 @@ public class Terminal.Window : Adw.ApplicationWindow {
     this.rename_tab_action = new SimpleAction("rename-tab", null);
     this.rename_tab_action.activate.connect(this.rename_tab);
     this.add_action(this.rename_tab_action);
+
+    sa = new SimpleAction("split-right", null);
+    sa.activate.connect(() => {
+      this.active_terminal_tab?.split(Gtk.Orientation.HORIZONTAL);
+    });
+    this.add_action(sa);
+
+    sa = new SimpleAction("split-down", null);
+    sa.activate.connect(() => {
+      this.active_terminal_tab?.split(Gtk.Orientation.VERTICAL);
+    });
+    this.add_action(sa);
+
+    sa = new SimpleAction("close-pane", null);
+    sa.activate.connect(() => {
+      this.try_closing_active_pane.begin();
+    });
+    this.add_action(sa);
+
+    // Pane cycling is disabled in single-pane tabs so that its shortcuts
+    // (Ctrl+Tab by default) reach the program running in the terminal.
+    this.focus_next_pane_action = new SimpleAction("focus-next-pane", null);
+    this.focus_next_pane_action.activate.connect(() => {
+      this.active_terminal_tab?.focus_pane(true);
+    });
+    this.focus_next_pane_action.set_enabled(false);
+    this.add_action(this.focus_next_pane_action);
+
+    this.focus_previous_pane_action = new SimpleAction("focus-previous-pane",
+                                                       null);
+    this.focus_previous_pane_action.activate.connect(() => {
+      this.active_terminal_tab?.focus_pane(false);
+    });
+    this.focus_previous_pane_action.set_enabled(false);
+    this.add_action(this.focus_previous_pane_action);
   }
 
   private void rename_tab() {
@@ -770,12 +842,12 @@ public class Terminal.Window : Adw.ApplicationWindow {
     var tab = new TerminalTab(this, this.tab_view.n_pages + 1, command, cwd);
     var page = this.tab_view.add_page(tab, null);
 
-    tab.terminal.bind_property("needs-attention",
-                               page,
-                               "needs-attention",
-                               GLib.BindingFlags.SYNC_CREATE,
-                               null,
-                               null);
+    tab.bind_property("needs-attention",
+                      page,
+                      "needs-attention",
+                      GLib.BindingFlags.SYNC_CREATE,
+                      null,
+                      null);
 
     tab.bind_property("title",
                       page,
@@ -814,6 +886,46 @@ public class Terminal.Window : Adw.ApplicationWindow {
         this.active_terminal_tab_signal_handlers.length
       );
     }
+
+    this.active_terminal_tab =
+      this.tab_view.selected_page?.child as TerminalTab;
+
+    if (this.active_terminal_tab != null) {
+      ulong handler;
+
+      this.on_active_terminal_title_changed();
+      handler = this.active_terminal_tab
+        .notify["title"]
+        .connect(this.on_active_terminal_title_changed);
+      this.active_terminal_tab_signal_handlers.append_val(handler);
+
+      // The tab's terminal changes when focus moves between split panes
+      handler = this.active_terminal_tab
+        .notify["terminal"]
+        .connect(this.update_active_terminal);
+      this.active_terminal_tab_signal_handlers.append_val(handler);
+
+      handler = this.active_terminal_tab
+        .notify["is-split"]
+        .connect(this.update_pane_actions);
+      this.active_terminal_tab_signal_handlers.append_val(handler);
+    }
+
+    this.update_pane_actions();
+    this.update_active_terminal();
+    this.active_terminal?.grab_focus();
+  }
+
+  private void update_pane_actions() {
+    var is_split = this.active_terminal_tab?.is_split ?? false;
+    this.focus_next_pane_action.set_enabled(is_split);
+    this.focus_previous_pane_action.set_enabled(is_split);
+  }
+
+  private void update_active_terminal() {
+    var terminal = this.active_terminal_tab?.terminal;
+    if (terminal == this.active_terminal) { return; }
+
     if (this.active_terminal != null) {
       foreach (unowned ulong id in this.active_terminal_signal_handlers) {
         this.active_terminal.disconnect(id);
@@ -828,16 +940,11 @@ public class Terminal.Window : Adw.ApplicationWindow {
       this.last_known_cwd = outgoing_cwd;
     }
 
-    this.freeze_notify();
-    this.active_terminal_tab =
-      this.tab_view.selected_page?.child as TerminalTab;
-    this.active_terminal = this.active_terminal_tab?.terminal;
-    this.active_terminal?.grab_focus();
-    this.thaw_notify();
+    this.active_terminal = terminal;
   }
 
   private void on_active_terminal_tab_changed() {
-    if (this.active_terminal_tab == null) {
+    if (this.active_terminal == null) {
       return;
     }
 
@@ -850,18 +957,12 @@ public class Terminal.Window : Adw.ApplicationWindow {
 
     this.active_terminal_signal_handlers.append_val(handler);
 
-    // FIXME: this should be watching the TerminalTab's `title`
-    this.on_active_terminal_title_changed();
-    handler = this.active_terminal_tab
-      .notify["title"]
-      .connect(this.on_active_terminal_title_changed);
-
-    this.active_terminal_tab_signal_handlers.append_val(handler);
-
     this.on_active_terminal_context_changed();
     handler = this.active_terminal
       .context_changed
-      .connect(this.on_active_terminal_tab_changed);
+      .connect(this.on_active_terminal_context_changed);
+
+    this.active_terminal_signal_handlers.append_val(handler);
   }
 
   private void on_active_terminal_context_changed() {
@@ -883,7 +984,7 @@ public class Terminal.Window : Adw.ApplicationWindow {
   }
 
   private void on_active_terminal_title_changed() {
-    this.active_terminal_title = this.tab_view.get_selected_page().title;
+    this.active_terminal_title = this.active_terminal_tab?.title ?? "";
   }
 
   private void on_active_terminal_selection_changed() {
@@ -943,15 +1044,22 @@ public class Terminal.Window : Adw.ApplicationWindow {
     }
   }
 
-  public void focus_tab_with_id(uint tab_id) {
+  // Select the tab and pane holding the terminal with this id. Returns false
+  // if no tab in this window holds it.
+  public bool focus_tab_with_id(uint terminal_id) {
     for (int i = 0; i != this.tab_view.get_n_pages(); i++) {
       var page = this.tab_view.get_nth_page(i);
       var tab = page.get_child() as TerminalTab;
-      if (tab != null && tab.get_id() == tab_id) {
+      if (tab != null && tab.focus_terminal(terminal_id)) {
+        // Selecting the page restores focus to the pane that last had it,
+        // so keep a reference to the requested terminal and focus it after.
+        var terminal = tab.terminal;
         this.tab_view.set_selected_page(page);
+        terminal.grab_focus();
         this.present();
-        return;
+        return true;
       }
     }
+    return false;
   }
 }

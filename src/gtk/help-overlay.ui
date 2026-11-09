@@ -22,12 +22,6 @@
             </child>
             <child>
               <object class="GtkShortcutsShortcut">
-                <property name="title" translatable="yes" context="shortcut window">Close tab</property>
-                <property name="action-name">win.close-tab</property>
-              </object>
-            </child>
-            <child>
-              <object class="GtkShortcutsShortcut">
                 <property name="title" translatable="yes" context="shortcut window">Rename tab</property>
                 <property name="action-name">win.rename-tab</property>
               </object>
@@ -42,6 +36,41 @@
               <object class="GtkShortcutsShortcut">
                 <property name="title" translatable="yes" context="shortcut window">Toggle fullscreen</property>
                 <property name="action-name">win.fullscreen</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="GtkShortcutsGroup">
+            <property name="title" translatable="yes" context="shortcut window">Panes</property>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes" context="shortcut window">Split right</property>
+                <property name="action-name">win.split-right</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes" context="shortcut window">Split down</property>
+                <property name="action-name">win.split-down</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes" context="shortcut window">Close pane</property>
+                <property name="action-name">win.close-pane</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes" context="shortcut window">Focus next pane</property>
+                <property name="action-name">win.focus-next-pane</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes" context="shortcut window">Focus previous pane</property>
+                <property name="action-name">win.focus-previous-pane</property>
               </object>
             </child>
           </object>

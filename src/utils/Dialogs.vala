@@ -22,6 +22,7 @@ namespace Terminal {
   public enum ConfirmClosingContext {
     TAB,
     WINDOW,
+    PANE,
   }
 
   public enum ConfirmActionType {
@@ -115,13 +116,22 @@ namespace Terminal {
       child = list;
     }
 
-    string title = context == ConfirmClosingContext.TAB
-      ? _("Close Tab?")
-      : _("Close Window?");
+    string title, body;
 
-    string body = context == ConfirmClosingContext.TAB
-      ? _("Some commands are still running. Closing this tab will kill them and may lead to unexpected outcomes.")
-      : _("Some commands are still running. Closing this window will kill them and may lead to unexpected outcomes.");
+    switch (context) {
+      case ConfirmClosingContext.PANE:
+        title = _("Close Pane?");
+        body = _("Some commands are still running. Closing this pane will kill them and may lead to unexpected outcomes.");
+        break;
+      case ConfirmClosingContext.WINDOW:
+        title = _("Close Window?");
+        body = _("Some commands are still running. Closing this window will kill them and may lead to unexpected outcomes.");
+        break;
+      default:
+        title = _("Close Tab?");
+        body = _("Some commands are still running. Closing this tab will kill them and may lead to unexpected outcomes.");
+        break;
+    }
 
     var response = yield confirm_action (
       title,

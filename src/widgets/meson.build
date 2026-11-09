@@ -8,6 +8,7 @@ blackbox_sources += files(
   'PreferencesWindow.vala',
   'StyleSwitcher.vala',
   'Terminal.vala',
+  'TerminalPane.vala',
   'TerminalTab.vala',
   'Window.vala',
 )
