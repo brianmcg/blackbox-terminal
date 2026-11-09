@@ -21,6 +21,11 @@
   background-color: @fixed-borders;
 }
 
+/* Remove the thin line between inactive tabs */
+#blackbox-main-window tabbar tabbox > separator {
+  opacity: 0;
+}
+
 window:not(.about) headerbar,
 .custom-headerbar {
   background-color: @window_bg_color;
